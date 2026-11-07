@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
+import { parsePlaces } from '../lib/format';
 import { supabase, isConfigured } from '../lib/supabase';
-import type { Profile } from '../types';
+import type { CollegeChoice, Profile } from '../types';
 
 export type AuthMode = 'login' | 'signup';
 
@@ -10,6 +11,8 @@ interface AuthState {
   mode: AuthMode;
   onDone?: () => void;
 }
+
+type ProfileInput = Omit<Profile, 'id' | 'college_id'>;
 
 interface Ctx {
   session: Session | null;
@@ -21,7 +24,7 @@ interface Ctx {
   requireAuth: (then: () => void) => void;
   sendOtp: (email: string) => Promise<string | null>;
   verifyOtp: (email: string, token: string) => Promise<{ error: string | null; hasProfile: boolean }>;
-  saveProfile: (p: Omit<Profile, 'id'>) => Promise<string | null>;
+  saveProfile: (p: ProfileInput, college: CollegeChoice) => Promise<string | null>;
   signOut: () => Promise<void>;
 }
 
@@ -84,10 +87,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [loadProfile],
   );
 
-  const saveProfile = useCallback(async (p: Omit<Profile, 'id'>) => {
+  const saveProfile = useCallback(async (p: ProfileInput, choice: CollegeChoice) => {
     const { data: u } = await supabase.auth.getUser();
-    if (!u.user) return 'You are not logged in. Verify your phone number first.';
-    const row = { id: u.user.id, ...p };
+    if (!u.user) return 'You are not logged in. Verify your email first.';
+
+    let collegeId: string;
+    if (choice.kind === 'existing') {
+      collegeId = choice.college.id;
+    } else {
+      const name = choice.name.trim();
+      const city = choice.city.trim();
+      const places = parsePlaces(choice.places);
+      if (places.length < 2) return 'Add at least two campus places for your college.';
+      const ins = await supabase
+        .from('colleges')
+        .insert({ name, city, country: choice.country.trim() || 'India', locations: places, created_by: u.user.id })
+        .select('id')
+        .single();
+      if (ins.error) {
+        if (ins.error.code !== '23505') return ins.error.message;
+        // Someone already added this college. Use theirs instead of creating a copy.
+        const ex = await supabase.from('colleges').select('id').ilike('name', name).ilike('city', city).maybeSingle();
+        if (!ex.data) return 'That college already exists. Search for it instead.';
+        collegeId = ex.data.id as string;
+      } else {
+        collegeId = ins.data.id as string;
+      }
+    }
+
+    const row: Profile = { id: u.user.id, college_id: collegeId, ...p };
     const { error } = await supabase.from('profiles').upsert(row);
     if (error) return error.message;
     setProfile(row);
