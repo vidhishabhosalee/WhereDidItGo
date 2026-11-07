@@ -1,8 +1,12 @@
 export const CATS = ['Electronics', 'Documents & IDs', 'Bags & accessories', 'Books & stationery', 'Clothing', 'Jewellery', 'Other belongings'];
 export const COLOURS = ['Black', 'White', 'Grey', 'Silver', 'Blue', 'Red', 'Green', 'Brown', 'Gold', 'Multicolour'];
-export const BRANCHES = ['CE', 'IT', 'CSE-DS', 'EXTC', 'MECH', 'AIML', 'AIDS', 'CSE (ICB)'];
-export const YEARS = ['FY', 'SY', 'TY', 'BE'];
-export const LOCATIONS = ['Outer canteen', 'Inner canteen', 'Main gate', 'Canopy area', 'Library', 'Gym', 'Classroom'];
+export const YEARS = ['FY', 'SY', 'TY', 'BE', 'Other'];
+
+/** Offered as suggestions when typing a branch. Students can type any branch. */
+export const BRANCH_SUGGESTIONS = ['CE', 'IT', 'CSE-DS', 'EXTC', 'MECH', 'AIML', 'AIDS', 'CSE (ICB)'];
+
+/** Pre-filled campus places when a student adds a new college. They can edit the list. */
+export const DEFAULT_PLACES = ['Main gate', 'Canteen', 'Library', 'Ground', 'Parking', 'Classroom', 'Other'];
 
 export const HEX: Record<string, string> = {
   Black: '#16181f',
@@ -17,13 +21,19 @@ export const HEX: Record<string, string> = {
   Multicolour: 'conic-gradient(#e5322d,#ffd23f,#1fa463,#2f6bff,#e5322d)',
 };
 
-/** Rough positions on a campus grid, used only to score how close two places are. Edit to match your campus. */
-export const PLACE_XY: Record<string, [number, number]> = {
-  'Outer canteen': [8, 6],
-  'Inner canteen': [6, 4],
-  'Main gate': [1, 8],
-  'Canopy area': [4, 7],
-  Library: [2, 1],
-  Gym: [9, 1],
-  Classroom: [4, 3],
-};
+export const COUNTRY_CODES: { code: string; label: string }[] = [
+  { code: '+91', label: 'India +91' },
+  { code: '+1', label: 'US / Canada +1' },
+  { code: '+44', label: 'UK +44' },
+  { code: '+61', label: 'Australia +61' },
+  { code: '+971', label: 'UAE +971' },
+  { code: '+966', label: 'Saudi Arabia +966' },
+  { code: '+65', label: 'Singapore +65' },
+  { code: '+49', label: 'Germany +49' },
+  { code: '+33', label: 'France +33' },
+  { code: '+977', label: 'Nepal +977' },
+  { code: '+880', label: 'Bangladesh +880' },
+  { code: '+94', label: 'Sri Lanka +94' },
+  { code: '+92', label: 'Pakistan +92' },
+  { code: '', label: 'Other (type + and country code)' },
+];

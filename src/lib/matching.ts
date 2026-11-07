@@ -1,6 +1,5 @@
 import type { Factor, Item, MatchResult } from '../types';
-import { PLACE_XY } from './constants';
-import { parseDate, placeLabel } from './format';
+import { isClassroom, parseDate, placeLabel } from './format';
 
 /** Starting weights. These are proposed values, not validated accuracy measurements. */
 const STOP = new Set(['a', 'an', 'the', 'of', 'with', 'and', 'in', 'for', 'pair', 'my', 'small', 'big', 'new', 'old']);
@@ -51,16 +50,19 @@ export function compare(lost: Item, found: Item): { score: number; factors: Fact
   const sCol = lost.colour === found.colour ? 1 : close ? 0.5 : 0;
   f.push({ k: 'Colour', w: 15, s: sCol, r: sCol === 1 ? `Both are ${lost.colour}.` : sCol ? 'Close shades.' : `Lost as ${lost.colour}, found as ${found.colour}.` });
 
-  const a = PLACE_XY[lost.location];
-  const b = PLACE_XY[found.location];
-  let d = a && b ? Math.hypot(a[0] - b[0], a[1] - b[1]) : 9;
-  if (lost.location === 'Classroom' && found.location === 'Classroom') {
-    d = (lost.classroom_no ?? '').trim().toLowerCase() === (found.classroom_no ?? '').trim().toLowerCase() ? 0 : 1;
-  }
-  const sLoc = Math.max(0, 1 - d / 7);
+  // Every college has different places, so location scoring only compares names. Same place scores full,
+  // two rooms in the classroom area score well, any two different places on one campus still score a little.
   const la = placeLabel(lost);
   const fb = placeLabel(found);
-  f.push({ k: 'Location', w: 20, s: sLoc, r: d === 0 ? `Same place: ${la}.` : d < 3 ? `${la} and ${fb} are close together.` : d < 5 ? `${la} and ${fb} are a short walk apart.` : `${la} and ${fb} are far apart.` });
+  const samePlace = lost.location.trim().toLowerCase() === found.location.trim().toLowerCase();
+  let sLoc = 0.3;
+  let locReason = `${la} and ${fb} are different places on campus.`;
+  if (samePlace) {
+    const sameRoom = !isClassroom(lost.location) || (lost.classroom_no ?? '').trim().toLowerCase() === (found.classroom_no ?? '').trim().toLowerCase();
+    sLoc = sameRoom ? 1 : 0.6;
+    locReason = sameRoom ? `Same place: ${la}.` : `Both in the classroom area, but different rooms (${la} and ${fb}).`;
+  }
+  f.push({ k: 'Location', w: 20, s: sLoc, r: locReason });
 
   const dd = Math.round((parseDate(found.item_date).getTime() - parseDate(lost.item_date).getTime()) / 86400000);
   const sDate = dd < 0 ? 0 : Math.max(0, 1 - dd / 7);
