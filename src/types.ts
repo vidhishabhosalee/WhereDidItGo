@@ -1,8 +1,22 @@
 export type ItemType = 'lost' | 'found';
 
+export interface College {
+  id: string;
+  name: string;
+  city: string;
+  country: string;
+  locations: string[];
+}
+
+/** What a student picked on signup: an existing college, or a new one to create after the email is verified. */
+export type CollegeChoice =
+  | { kind: 'existing'; college: College }
+  | { kind: 'new'; name: string; city: string; country: string; places: string };
+
 export interface Item {
   id: string;
   user_id: string;
+  college_id: string;
   type: ItemType;
   name: string;
   category: string;
@@ -22,6 +36,7 @@ export interface Item {
 
 export interface Profile {
   id: string;
+  college_id: string;
   full_name: string;
   branch: string;
   year: string;

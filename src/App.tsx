@@ -1,41 +1,58 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AuthDialog from './components/AuthDialog';
 import Browse, { EMPTY_FILTERS, type Filters } from './components/Browse';
+import CollegePicker from './components/CollegePicker';
 import ItemDialog from './components/ItemDialog';
 import ReportForm from './components/ReportForm';
 import Toast from './components/Toast';
 import { useAuth } from './context/AuthContext';
+import { useCollege } from './context/CollegeContext';
 import { CATS } from './lib/constants';
 import { fmtDate, placeLabel } from './lib/format';
 import { isConfigured, supabase } from './lib/supabase';
 import type { Item, ItemType } from './types';
 
 export default function App() {
-  const { profile, session, openAuth, requireAuth, signOut } = useAuth();
+  const { profile, session, loading: authLoading, openAuth, requireAuth, signOut } = useAuth();
+  const { college, myCollege, ready, openPicker, chooseCollege } = useCollege();
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [openId, setOpenId] = useState<string | null>(null);
   const [rtype, setRtype] = useState<ItemType>('lost');
+  const askedForCollege = useRef(false);
+
+  const collegeId = college?.id ?? null;
 
   const load = useCallback(async () => {
-    if (!isConfigured) {
+    if (!isConfigured || !collegeId) {
+      setItems([]);
       setLoading(false);
       return;
     }
-    const { data, error } = await supabase.from('items').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('items').select('*').eq('college_id', collegeId).order('created_at', { ascending: false });
     if (error) setLoadError(error.message);
     else {
       setLoadError('');
       setItems((data ?? []) as Item[]);
     }
     setLoading(false);
-  }, []);
+  }, [collegeId]);
 
   useEffect(() => {
+    setLoading(true);
+    setFilters(EMPTY_FILTERS);
+    setOpenId(null);
     load();
   }, [load]);
+
+  // First visit with no saved college and no login: ask which college they want to see.
+  useEffect(() => {
+    if (askedForCollege.current || !ready || authLoading || college || profile || !isConfigured) return;
+    askedForCollege.current = true;
+    openPicker();
+  }, [ready, authLoading, college, profile, openPicker]);
 
   const active = useMemo(() => items.filter((i) => i.status === 'active'), [items]);
   const returned = useMemo(() => items.filter((i) => i.status === 'returned'), [items]);
@@ -46,6 +63,8 @@ export default function App() {
   function startReport(t: ItemType) {
     requireAuth(() => {
       setRtype(t);
+      // Reports always go to the student's own college, so show that college's list.
+      if (myCollege && college?.id !== myCollege.id) chooseCollege(myCollege);
       setTimeout(() => document.getElementById('report')?.scrollIntoView({ behavior: 'smooth' }), 50);
     });
   }
@@ -96,11 +115,28 @@ export default function App() {
         </div>
       </nav>
 
+      <div className="collegebar">
+        <div className="wrap">
+          <span>
+            {college ? (
+              <>Showing lost and found at <b>{college.name}</b>, {college.city}</>
+            ) : (
+              'No college selected yet'
+            )}
+          </span>
+          <button className="btn plain sm" type="button" onClick={openPicker}>{college ? 'Change college' : 'Choose your college'}</button>
+        </div>
+      </div>
+
       <header className="hero" id="top">
         <div className="wrap">
           <div>
             <h1><span>Lost</span><span>something?</span><span className="mark">Let's find it.</span></h1>
-            <p className="sub">One place on campus to report, search and recover belongings, without digging through group chats and notice boards.</p>
+            <p className="sub">
+              {college
+                ? `One place at ${college.name} to report, search and recover belongings, without digging through group chats and notice boards.`
+                : 'One place for every college to report, search and recover belongings. Pick your college to get started.'}
+            </p>
             <div className="ctas">
               <button className="btn lost big" type="button" onClick={() => startReport('lost')}>Report lost item</button>
               <button className="btn big" type="button" onClick={() => startReport('found')}>Report found item</button>
@@ -108,7 +144,7 @@ export default function App() {
           </div>
           <div className="ticket" aria-label="Reports open right now">
             <div className="t-top">
-              <div className="t-label">Open on campus right now</div>
+              <div className="t-label">Open right now{college ? ` at ${college.name}` : ''}</div>
               <div className="t-score">{active.length}<small>reports</small></div>
               <div className="t-name">{lostCount} lost, {foundCount} found</div>
             </div>
@@ -184,6 +220,7 @@ export default function App() {
 
       <ItemDialog item={openItem} items={items} onClose={() => setOpenId(null)} onOpen={setOpenId} onChanged={load} />
       <AuthDialog />
+      <CollegePicker />
       <Toast />
     </>
   );
