@@ -119,12 +119,13 @@ export default function App() {
         <div className="wrap">
           <span>
             {college ? (
-              <>Showing lost and found at <b>{college.name}</b>, {college.city}</>
+              <>{profile ? 'Your college:' : 'Showing lost and found at'} <b>{college.name}</b>, {college.city}</>
             ) : (
               'No college selected yet'
             )}
           </span>
-          <button className="btn plain sm" type="button" onClick={openPicker}>{college ? 'Change college' : 'Choose your college'}</button>
+          {/* Logged-in students are tied to their own college. Only visitors can switch. */}
+          {!profile && <button className="btn plain sm" type="button" onClick={openPicker}>{college ? 'Change college' : 'Choose your college'}</button>}
         </div>
       </div>
 
