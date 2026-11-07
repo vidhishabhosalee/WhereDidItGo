@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { useCollege } from '../context/CollegeContext';
 import { isConfigured, supabase } from '../lib/supabase';
 import type { College } from '../types';
@@ -55,6 +56,7 @@ export function CollegeList({ results, loading, error, onPick }: { results: Coll
 
 function PickerBody() {
   const { closePicker, chooseCollege } = useCollege();
+  const { openAuth } = useAuth();
   const [q, setQ] = useState('');
   const { results, loading, error } = useCollegeSearch(q);
 
@@ -70,7 +72,10 @@ function PickerBody() {
           <input id="pick-q" type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Sanghvi, Mumbai, IIT, Manchester" autoFocus />
         </div>
         <CollegeList results={results} loading={loading} error={error} onPick={chooseCollege} />
-        <p className="hint">Each college has its own lost and found. Can't find yours? Sign up and add it, then your classmates can find it too.</p>
+        <p className="hint">Each college has its own lost and found. Students only see reports from their own college once they log in.</p>
+        <div>
+          <button type="button" className="btn sm" onClick={() => { closePicker(); openAuth('signup'); }}>My college is not listed. Sign up to add it</button>
+        </div>
       </div>
     </>
   );

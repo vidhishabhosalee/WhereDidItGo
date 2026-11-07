@@ -95,7 +95,12 @@ function AuthForm() {
     }
     if (res.hasProfile) {
       setBusy(false);
-      return finish('Email verified. You are logged in.');
+      // An account with this email already exists, so the college typed into the signup form is not used.
+      return finish(
+        mode === 'signup'
+          ? 'This email already has an account, so you were logged in and your details were not changed. Sign up with a different email to add another college.'
+          : 'Email verified. You are logged in.',
+      );
     }
     if (mode === 'signup' && !validateProfile()) {
       const err = await create();
