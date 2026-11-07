@@ -1,12 +1,14 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { CATS, COLOURS, LOCATIONS } from '../lib/constants';
-import { iso, toE164 } from '../lib/format';
+import { useCollege } from '../context/CollegeContext';
+import { CATS, COLOURS, DEFAULT_PLACES } from '../lib/constants';
+import { iso, isClassroom, splitPhone, toE164 } from '../lib/format';
 import { matchesFor } from '../lib/matching';
 import { supabase } from '../lib/supabase';
 import { toast } from '../lib/toast';
 import type { Item, ItemType } from '../types';
 import MatchList from './MatchList';
+import PhoneInput from './PhoneInput';
 
 interface Props {
   items: Item[];
@@ -18,13 +20,15 @@ interface Props {
 
 export default function ReportForm({ items, type, onTypeChange, onCreated, onOpen }: Props) {
   const { profile, session, loading, openAuth } = useAuth();
+  const { myCollege } = useCollege();
   const today = iso(new Date());
+  const places = myCollege?.locations?.length ? myCollege.locations : DEFAULT_PLACES;
 
   const [name, setName] = useState('');
   const [category, setCategory] = useState(CATS[0]);
   const [brand, setBrand] = useState('');
   const [colour, setColour] = useState(COLOURS[0]);
-  const [location, setLocation] = useState(LOCATIONS[0]);
+  const [location, setLocation] = useState('');
   const [classroomNo, setClassroomNo] = useState('');
   const [date, setDate] = useState(today);
   const [time, setTime] = useState('');
@@ -33,19 +37,31 @@ export default function ReportForm({ items, type, onTypeChange, onCreated, onOpe
   const [preview, setPreview] = useState('');
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
+  const [cc, setCc] = useState('+91');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<Item | null>(null);
 
+  // The chosen place falls back to the first place of the student's college until they pick one.
+  const loc = places.includes(location) ? location : places[0];
+  const room = isClassroom(loc);
+
+  // Pre-fill the public contact details from the profile once. The student can change them per report.
+  const prefilled = useRef(false);
   useEffect(() => {
-    if (profile) {
-      setContactName((n) => n || profile.full_name);
-      setContactPhone((p) => p || profile.phone.replace(/^\+91/, ''));
-    }
+    if (!profile || prefilled.current) return;
+    prefilled.current = true;
+    const sp = splitPhone(profile.phone);
+    setContactName(profile.full_name);
+    setCc(sp.cc);
+    setContactPhone(sp.national);
   }, [profile]);
 
   useEffect(() => {
-    if (!file) return setPreview('');
+    if (!file) {
+      setPreview('');
+      return;
+    }
     const url = URL.createObjectURL(file);
     setPreview(url);
     return () => URL.revokeObjectURL(url);
@@ -57,11 +73,11 @@ export default function ReportForm({ items, type, onTypeChange, onCreated, onOpe
     e.preventDefault();
     if (!session || !profile) return openAuth('login');
     if (!name.trim()) return setError('Add an item name.');
-    if (location === 'Classroom' && !classroomNo.trim()) return setError('Enter the classroom number.');
+    if (room && !classroomNo.trim()) return setError('Enter the classroom number.');
     if (!date) return setError('Choose the date.');
     if (contactName.trim().length < 2) return setError('Add the name people should contact.');
-    const phone = toE164(contactPhone);
-    if (!phone) return setError('Enter a 10 digit mobile number people can call.');
+    const phone = toE164(contactPhone, cc);
+    if (!phone) return setError('Enter a mobile number people can call.');
     if (file && file.size > 5 * 1024 * 1024) return setError('Choose a photo under 5 MB.');
 
     setError('');
@@ -83,13 +99,14 @@ export default function ReportForm({ items, type, onTypeChange, onCreated, onOpe
       .from('items')
       .insert({
         user_id: session.user.id,
+        college_id: profile.college_id,
         type,
         name: name.trim(),
         category,
         brand: brand.trim(),
         colour,
-        location,
-        classroom_no: location === 'Classroom' ? classroomNo.trim() : null,
+        location: loc,
+        classroom_no: room ? classroomNo.trim() : null,
         item_date: date,
         item_time: time || null,
         description: description.trim(),
@@ -124,10 +141,14 @@ export default function ReportForm({ items, type, onTypeChange, onCreated, onOpe
     );
   }
 
+  if (!myCollege) return <p className="warn">Loading your college</p>;
+
   const matches = created ? matchesFor(created, items) : [];
 
   return (
     <>
+      <p className="posting-to">Posting to <b>{myCollege.name}</b>, {myCollege.city}</p>
+
       <div className="seg" role="group" aria-label="What are you reporting">
         <button type="button" aria-pressed={lost} onClick={() => onTypeChange('lost')}>I lost something</button>
         <button type="button" aria-pressed={!lost} onClick={() => onTypeChange('found')}>I found something</button>
@@ -157,11 +178,11 @@ export default function ReportForm({ items, type, onTypeChange, onCreated, onOpe
           </div>
           <div>
             <label htmlFor="r-loc">{lost ? 'Last seen location' : 'Location where found'}</label>
-            <select id="r-loc" value={location} onChange={(e) => setLocation(e.target.value)}>
-              {LOCATIONS.map((l) => <option key={l}>{l}</option>)}
+            <select id="r-loc" value={loc} onChange={(e) => setLocation(e.target.value)}>
+              {places.map((l) => <option key={l}>{l}</option>)}
             </select>
           </div>
-          {location === 'Classroom' && (
+          {room && (
             <div>
               <label htmlFor="r-room">Classroom number</label>
               <input id="r-room" type="text" value={classroomNo} onChange={(e) => setClassroomNo(e.target.value)} placeholder="304" maxLength={12} />
@@ -197,10 +218,7 @@ export default function ReportForm({ items, type, onTypeChange, onCreated, onOpe
               </div>
               <div>
                 <label htmlFor="r-cphone">Your phone number</label>
-                <div className="phone-row">
-                  <span>+91</span>
-                  <input id="r-cphone" type="tel" inputMode="numeric" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="9876543210" />
-                </div>
+                <PhoneInput id="r-cphone" value={contactPhone} onChange={setContactPhone} cc={cc} onCc={setCc} />
               </div>
             </div>
           </div>
@@ -217,7 +235,7 @@ export default function ReportForm({ items, type, onTypeChange, onCreated, onOpe
       {created && (
         <div className="result">
           <h3>Your report is live</h3>
-          <p style={{ fontWeight: 500 }}>People can now see it and contact you on the number you gave.</p>
+          <p style={{ fontWeight: 500 }}>People at your college can now see it and contact you on the number you gave.</p>
           <MatchList matches={matches} onOpen={onOpen} />
         </div>
       )}

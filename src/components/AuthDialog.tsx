@@ -1,9 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useAuth, type AuthMode } from '../context/AuthContext';
-import { BRANCHES, YEARS } from '../lib/constants';
+import { BRANCH_SUGGESTIONS, YEARS } from '../lib/constants';
 import { toE164 } from '../lib/format';
 import { toast } from '../lib/toast';
+import type { CollegeChoice } from '../types';
+import CollegeField from './CollegeField';
 import Modal from './Modal';
+import PhoneInput from './PhoneInput';
 
 type Step = 'details' | 'otp' | 'complete';
 
@@ -13,11 +16,13 @@ function AuthForm() {
   const { auth, closeAuth, sendOtp, verifyOtp, saveProfile } = useAuth();
   const [mode, setMode] = useState<AuthMode>(auth.mode);
   const [step, setStep] = useState<Step>('details');
+  const [college, setCollege] = useState<CollegeChoice | null>(null);
   const [name, setName] = useState('');
   const [branch, setBranch] = useState('');
   const [year, setYear] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [cc, setCc] = useState('+91');
   const [otp, setOtp] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -30,14 +35,15 @@ function AuthForm() {
   }, [cooldown]);
 
   const cleanEmail = email.trim().toLowerCase();
-  const e164 = toE164(phone);
+  const e164 = toE164(phone, cc);
 
-  /** Checks name, branch, year and phone. Email is checked separately because login only needs that. */
+  /** Checks college, name, branch, year and phone. Email is checked separately because login only needs that. */
   function validateProfile(): string {
+    if (!college) return 'Choose your college.';
     if (name.trim().length < 2) return 'Enter your full name.';
-    if (!branch) return 'Choose your branch.';
+    if (branch.trim().length < 2) return 'Enter your branch.';
     if (!year) return 'Choose your year.';
-    if (!e164) return 'Enter a 10 digit mobile number.';
+    if (!e164) return cc === '+91' ? 'Enter a 10 digit mobile number.' : 'Enter a valid mobile number.';
     return '';
   }
 
@@ -73,6 +79,10 @@ function AuthForm() {
     done?.();
   }
 
+  async function create(): Promise<string | null> {
+    return saveProfile({ full_name: name.trim(), branch: branch.trim(), year, email: cleanEmail, phone: e164! }, college!);
+  }
+
   async function checkCode(e: FormEvent) {
     e.preventDefault();
     if (!/^\d{6}$/.test(otp.trim())) return setError('Enter the 6 digit code from your email.');
@@ -88,7 +98,7 @@ function AuthForm() {
       return finish('Email verified. You are logged in.');
     }
     if (mode === 'signup' && !validateProfile()) {
-      const err = await saveProfile({ full_name: name.trim(), branch, year, email: cleanEmail, phone: e164! });
+      const err = await create();
       setBusy(false);
       if (err) return setError(err);
       return finish('Account created. You can post reports now.');
@@ -103,7 +113,7 @@ function AuthForm() {
     if (problem) return setError(problem);
     setError('');
     setBusy(true);
-    const err = await saveProfile({ full_name: name.trim(), branch, year, email: cleanEmail, phone: e164! });
+    const err = await create();
     setBusy(false);
     if (err) return setError(err);
     finish('Account created. You can post reports now.');
@@ -111,6 +121,7 @@ function AuthForm() {
 
   const profileFields = (
     <>
+      <CollegeField value={college} onChange={setCollege} />
       <div>
         <label htmlFor="a-name">Full name</label>
         <input id="a-name" type="text" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -118,12 +129,12 @@ function AuthForm() {
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label htmlFor="a-branch">Branch</label>
-          <select id="a-branch" value={branch} onChange={(e) => setBranch(e.target.value)}>
-            <option value="">Select</option>
-            {BRANCHES.map((b) => (
-              <option key={b}>{b}</option>
+          <input id="a-branch" type="text" list="branch-list" value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="CE, IT, Biology" />
+          <datalist id="branch-list">
+            {BRANCH_SUGGESTIONS.map((b) => (
+              <option key={b} value={b} />
             ))}
-          </select>
+          </datalist>
         </div>
         <div>
           <label htmlFor="a-year">Year</label>
@@ -137,10 +148,7 @@ function AuthForm() {
       </div>
       <div>
         <label htmlFor="a-phone">Mobile number</label>
-        <div className="phone-row">
-          <span>+91</span>
-          <input id="a-phone" type="tel" inputMode="numeric" autoComplete="tel-national" placeholder="9876543210" value={phone} onChange={(e) => setPhone(e.target.value)} />
-        </div>
+        <PhoneInput id="a-phone" value={phone} onChange={setPhone} cc={cc} onCc={setCc} />
         <p className="hint">People who find your item will use this number to contact you.</p>
       </div>
     </>
